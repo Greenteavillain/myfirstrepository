@@ -1,55 +1,162 @@
-<!DOCTYPE html> 
+<!doctype html>
 <html lang="ko">
-
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>나의 수업 웹페이지</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Particle Spray Ring</title>
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;padding:32px;line-height:1.6}
-    header,footer{padding:16px 0;color:#333}
-    header h1{margin:0 0 8px 0}
-    nav a{margin-right:12px}
-    .hero{background:#f5f7ff;border:1px solid #dbe1ff;padding:16px;border-radius:12px;margin:16px 0}
-    h2{margin-top:28px}
-    ul,ol{padding-left:20px}
-    .card{border:1px solid #e3e3e3;border-radius:12px;padding:16px;margin:12px 0}
-    a{color:#1a73e8;text-decoration:none}
-    a:hover{text-decoration:underline}
+    html, body { height: 100%; margin: 0; background:#000; overflow:hidden; }
+    canvas { display:block; width:100%; height:100%; }
   </style>
 </head>
-
 <body>
-  <header>
-    <h1>Yuseon's Class Website</h1>
-    <nav>
-      <a href="./index.html">Home</a>
-      <a href="./exercises/song.html">Exercises</a>
-    </nav>
-  </header>
+  <canvas id="c"></canvas>
+  <script>
+  (() => {
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
 
-  <section class="hero">
-    <p>이 페이지는 GitHub Pages로 배포하기 위한 <strong>기본 템플릿</strong>입니다. 파일을 수정한 뒤 커밋하고 푸시하면 사이트가 업데이트됩니다.</p>
-  </section>
+    const COLORS = [
+      { hex: '#FFFFFF', w: 0.8 },
+      { hex: '#E85160', w: 0.1 },
+      { hex: '#5DC4E6', w: 0.1 },
+    ];
 
-  <section>
-    <h2>Class Projects</h2>
-    <ol>
-      <li>Project A</li>
-      <li>Project B</li>
-    </ol>
-  </section>
 
-  <section>
-    <h2>Assets</h2>
-    <div class="card">
-      <p>아이콘 예시:</p>
-      <img src="./images/icon.png" alt="아이콘 예시" width="96" height="96">
-    </div>
-  </section>
+    function fit() {
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      canvas.width  = Math.floor(canvas.clientWidth  * dpr);
+      canvas.height = Math.floor(canvas.clientHeight * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    addEventListener('resize', fit, { passive:true });
+    fit();
 
-  <footer>
-    <p>© 2025 My Class Site · <a href="https://github.com">GitHub</a></p>
-  </footer>
+    const particles = [];
+    const MAX_PARTICLES = 40000;
+
+    const GAP_HALF = 1.5; // ±1.5° → 총 3도
+    function isForbiddenDeg(deg) {
+      let m = ((deg % 360) + 360) % 360;
+      let mod = m % 30;
+      return (mod <= GAP_HALF) || (mod >= 30 - GAP_HALF);
+    }
+
+    function pickColor() {
+      const r = Math.random();
+      let acc = 0;
+      for (const c of COLORS) {
+        acc += c.w;
+        if (r <= acc) return c.hex;
+      }
+      return COLORS[0].hex;
+    }
+
+    let spawning = false;
+    let spawnX = 0, spawnY = 0;
+    function setSpawnPoint(px, py) { spawnX = px; spawnY = py; }
+
+    // 마우스 이벤트
+    canvas.addEventListener('mousedown', e => {
+      spawning = true;
+      const rect = canvas.getBoundingClientRect();
+      setSpawnPoint(e.clientX - rect.left, e.clientY - rect.top);
+    });
+    addEventListener('mouseup', () => spawning = false);
+    canvas.addEventListener('mousemove', e => {
+      if (!spawning) return;
+      const rect = canvas.getBoundingClientRect();
+      setSpawnPoint(e.clientX - rect.left, e.clientY - rect.top);
+    });
+
+    // 터치 이벤트
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      spawning = true;
+      const t = e.changedTouches[0];
+      const rect = canvas.getBoundingClientRect();
+      setSpawnPoint(t.clientX - rect.left, t.clientY - rect.top);
+    }, { passive:false });
+    canvas.addEventListener('touchmove', e => {
+      if (!spawning) return;
+      const t = e.changedTouches[0];
+      const rect = canvas.getBoundingClientRect();
+      setSpawnPoint(t.clientX - rect.left, t.clientY - rect.top);
+    }, { passive:true });
+    addEventListener('touchend', () => spawning = false, { passive:true });
+    addEventListener('mouseleave', () => spawning = false);
+
+    const RING_RADIUS = 300; // 반경
+
+    // 입자 생성
+    function spawnParticles(x, y, count = 120) { // 수 절반 ↓
+      if (particles.length > MAX_PARTICLES) return;
+
+      for (let i = 0; i < count; i++) {
+        let deg;
+        for (let tries = 0; tries < 12; tries++) {
+          deg = Math.random() * 360;
+          if (!isForbiddenDeg(deg)) break;
+        }
+        const rad = deg * Math.PI / 180;
+        const px = x + Math.cos(rad) * RING_RADIUS;
+        const py = y + Math.sin(rad) * RING_RADIUS;
+        const speed = 12 + Math.random() * 6;
+        const vx = Math.cos(rad) * speed;
+        const vy = Math.sin(rad) * speed;
+
+        const r  = 3 + Math.random() * 6; // 크기 두 배 ↑ (6~12px)
+
+        particles.push({
+          x: px, y: py, vx, vy,
+          r,
+          color: pickColor(),
+          alpha: 0.8 + Math.random() * 0.2,
+          life: 0,
+          maxLife: 30 + Math.random()*10
+        });
+      }
+    }
+
+    function tick() {
+      requestAnimationFrame(tick);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+
+      if (spawning) spawnParticles(spawnX, spawnY, 120); // 수 절반 ↓
+
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x  += p.vx;
+        p.y  += p.vy;
+        p.life++;
+
+        const scale = 1 - (p.life / p.maxLife);
+        const currentR = p.r * Math.max(scale, 0);
+
+        ctx.globalAlpha = p.alpha;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.ellipse(
+          p.x, p.y,
+          currentR * 1.5,
+          currentR * 0.7,
+          Math.atan2(p.vy, p.vx),
+          0, Math.PI * 2
+        );
+        ctx.fill();
+
+        if (p.life > p.maxLife ||
+            p.x < -20 || p.y < -20 ||
+            p.x > canvas.clientWidth + 20 ||
+            p.y > canvas.clientHeight + 20) {
+          particles.splice(i, 1);
+        }
+      }
+    }
+    tick();
+  })();
+  </script>
 </body>
 </html>
